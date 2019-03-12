@@ -68,7 +68,7 @@ team_t team = {
 static char *heap_listp;
 static char *free_listp;
 static char *alloc_listp;
-NEXT_BLKP(*free_listp)=NULL;
+NEXT_BLKP(free_listp) = NULL;
 
 static void *find_fit(size_t asize)
 {
