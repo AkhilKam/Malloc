@@ -58,7 +58,7 @@ team_t team = {
 #define GET_SIZE(p) (GET(p) & ~0x7)
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
-#define HDRP(bp)   ((char *)(bp) - WSIZE)
+#define HDRP(bp)   ((char *)(bp) - DSIZE)
 #define FTRP(bp)   ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
 
@@ -67,21 +67,56 @@ team_t team = {
 //static void cheese3 (size_t somethingy){printf("3");}
 static char *heap_listp;
 static char *free_listp;
-static char *alloc_listp;
-NEXT_BLKP(*free_listp)=NULL;
+//static char *alloc_listp;
+//NEXT_BLKP(*free_listp)=NULL;
+
+#define prev(bp) ((int  *)(bp) - WSIZE)
+#define succ(bp) ((int  *)(bp) - DSIZE)
+
+
+static void insert_at_front(char *bp){
+  PUT(succ(bp),free_listp);
+  PUT(prev(free_listp),bp);
+  *prev(bp) = NULL;
+  free_listp = bp; 
+
+}
+
+static void remove_block_free(char *bp){
+  if(prev(bp) != NULL){
+    *succ(prev(bp)) = succ(bp);
+  }
+
+  else{
+    free_listp = *succ(bp);
+  }
+
+  *prev(succ(bp)) = prev(bp);
+
+}
+
+
+
+
+
+
 
 static void *find_fit(size_t asize)
 {
   void *bp;
 
-  for (bp = free_listp; NEXT_BLKP(bp)==NULL; bp = NEXT_BLKP(bp)) {
+   for (bp = free_listp; succ(bp)!=NULL; bp = succ(bp)) {
     if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))){
       return bp;
     }
-  }
+   }
+
+  
  return NULL;
   /* #endif */
 }
+
+
 
 static void place(void *bp, size_t asize)
 {
@@ -113,8 +148,15 @@ static void *coalesce(void *bp)
      size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
      PUT(HDRP(bp), PACK(size, 0));
      PUT(FTRP(bp), PACK(size, 0));
+     *succ(prev(NEXT_BLKP(bp))) = succ(NEXT_BLKP(bp));
+     insert_at_front(bp);
+     //bp = NEXT_BLKP(PREV_BLKP(NEXT_BLKP(bp)));
+     //bp = PREV_BLKP(NEXT_BLKP(NEXT_BLKP(bp)));
+     //NEXT_BLKP(NEXT_BLKP(bp)) = NEXT_BLKP(bp);
+     //PREV_BLKP(NEXT_BLKP(bp)) = PREV_BLKP(bp);
    }
    else if (!prev_alloc && next_alloc) {
+     //size += GET_SIZE(HDRP(PREV_BLKP(bp)));
      size += GET_SIZE(HDRP(PREV_BLKP(bp)));
      PUT(FTRP(bp), PACK(size, 0));
      PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
@@ -122,13 +164,20 @@ static void *coalesce(void *bp)
    }
 
    else {
-     size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
+     size += GET_SIZE(HDRP(PREV_BLKP(bp)))+ GET_SIZE(FTRP(NEXT_BLKP(bp)));
+     //size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
      PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
      PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
-     bp = PREV_BLKP(bp);
+     //bp = PREV_BLKP(bp);
+     *succ(PREV_BLKP(bp)) = succ(NEXT_BLKP(bp));
+     //NEXT_BLKP(PREV_BLKP(NEXT_BLKP(bp))) = NEXT_BLKP(NEXT_BLKP(bp));
+     //PREV_BLKP(NEXT_BLKP(NEXT_BLKP(bp))) = PREV_BLKP(NEXT_BLKP(bp));
+     
    }
    return bp;
 }
+
+
 
 static void *extend_heap(size_t words)
 {
@@ -180,12 +229,18 @@ void *mm_malloc(size_t size)
   if (size == 0)
     return NULL;
 
-  if (size <= DSIZE)
+  /* 
+ if (size <= DSIZE)
     asize = 2*DSIZE;
   else
-    asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);
+    asize = ALIGN (size + DSIZE + DSIZE);
+    //asize = DSIZE * ((size + (DSIZE) + (DSIZE-1) / DSIZE);
+ 
+    */
+  asize = MAX(ALIGN(size + 2*DSIZE), ALIGNMENT) 
   
   if ((bp = find_fit(asize)) != NULL) {
+    remove_block_free(bp);
     place(bp, asize);
     return bp;
   }
@@ -196,6 +251,7 @@ void *mm_malloc(size_t size)
   place(bp, asize);
   return bp;
  
+
   /* int newsize = ALIGN(size + SIZE_T_SIZE);
     void *p = mem_sbrk(newsize);
     if (p == (void *)-1)
@@ -217,9 +273,7 @@ void mm_free(void *ptr)
   PUT(FTRP(ptr), PACK(size, 0));
   coalesce(ptr);
 
-  free_listp = NEXT_BLKP(ptr);
-  ptr = PREV_BLKP(free_listp);
-  free_listp=ptr;
+  // insert_at_front(ptr);
 
   
 }
@@ -234,6 +288,7 @@ void *mm_realloc(void *ptr, size_t size)
     void *newptr;
     size_t copySize;
     
+    
     newptr = mm_malloc(size);
     if (newptr == NULL)
       return NULL;
@@ -243,9 +298,13 @@ void *mm_realloc(void *ptr, size_t size)
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
     return newptr;
+    
+
+
 }
 
-int mm_check(void) {
+
+/* int mm_check(void) {
 
   char *bp;
   for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)){
@@ -254,6 +313,7 @@ int mm_check(void) {
   }
 }
 
+*/
 
 
 
