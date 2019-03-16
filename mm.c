@@ -51,14 +51,14 @@ team_t team = {
 
 #define PACK(size, alloc) ((size) | (alloc))
 //static void cheese (size_t somethingy){printf("here");}
-#define GET(p) (*(unsigned int *)(p))
+#define GET(p) (*(unsigned int *)(p)) //int
 #define PUT(p, val) (*(unsigned int *)(p) = (val))
 //static void cheese2 (size_t somethingy){printf("2");}
 
 #define GET_SIZE(p) (GET(p) & ~0x7)
 #define GET_ALLOC(p) (GET(p) & 0x1)
 
-#define HDRP(bp)   ((char *)(bp) - DSIZE)
+#define HDRP(bp)   ((char *)(bp) - WSIZE)
 #define FTRP(bp)   ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
 
@@ -70,13 +70,16 @@ static char *free_listp;
 //static char *alloc_listp;
 //NEXT_BLKP(*free_listp)=NULL;
 
-#define prev(bp) ((int  *)(bp) - WSIZE)
-#define succ(bp) ((int  *)(bp) - DSIZE)
+#define prev(bp) (char  *)(bp)
+#define succ(bp) ((char  *)(bp) + DSIZE)
+
+#define SET_PREV(bp, qp) (prev(bp) = qp)
+#define SET_NEXT(bp, qp) (succ(bp) = qp)
 
 
 static void insert_at_front(char *bp){
-  PUT(succ(bp),free_listp);
-  PUT(prev(free_listp),bp);
+  SET_NEXT(bp, free_listp);//PUT(succ(bp),free_listp);
+  SET_PREV(free_listp, bp);//PUT(prev(free_listp),bp);
   *prev(bp) = NULL;
   free_listp = bp; 
 
@@ -84,14 +87,14 @@ static void insert_at_front(char *bp){
 
 static void remove_block_free(char *bp){
   if(prev(bp) != NULL){
-    *succ(prev(bp)) = succ(bp);
+    SET_NEXT(prev(bp),succ(bp));              // *succ(prev(bp)) = succ(bp);
   }
 
   else{
-    free_listp = *succ(bp);
+    free_listp = succ(bp);
   }
 
-  *prev(succ(bp)) = prev(bp);
+  SET_PREV(succ(bp),prev(bp));     // *prev(succ(bp)) = prev(bp);
 
 }
 
@@ -105,7 +108,7 @@ static void *find_fit(size_t asize)
 {
   void *bp;
 
-   for (bp = free_listp; succ(bp)!=NULL; bp = succ(bp)) {
+   for (bp = free_listp; bp != NULL; bp = succ(bp)) {
     if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))){
       return bp;
     }
@@ -237,7 +240,7 @@ void *mm_malloc(size_t size)
     //asize = DSIZE * ((size + (DSIZE) + (DSIZE-1) / DSIZE);
  
     */
-  asize = MAX(ALIGN(size + 2*DSIZE), ALIGNMENT) 
+  asize = MAX(ALIGN(size + 2*DSIZE), ALIGNMENT); 
   
   if ((bp = find_fit(asize)) != NULL) {
     remove_block_free(bp);
