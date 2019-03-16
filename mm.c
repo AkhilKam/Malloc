@@ -1,5 +1,5 @@
 /*
- * mm.c - fast version with optimized heap pointer.
+ * mm.c - correct version
  * 
  * In our approach, a block is allocated and freed by encoding its block size and allocated bits, which are stored in the header and footer.
  * The allocated bits are set to one when allocated and zero when freed.
@@ -9,6 +9,7 @@
  * by looking at the allocated bits and checking for an appropriate size. After finding an appropriate free block,
  * our allocator places the desired block into this free block.
  */
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,23 +51,23 @@ team_t team = {
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))
 
-#define PACK(size, alloc) ((size) | (alloc))                                            // Sets the size and allocated bit into a word
+#define PACK(size, alloc) ((size) | (alloc))                                //sets size and allocated bit into a word
 
-#define GET(p) (*(unsigned int *)(p))                                                   // Reads a word at address p
-#define PUT(p, val) (*(unsigned int *)(p) = (val))                                      // Puts in val at specified address p 
-
-
-#define GET_SIZE(p) (GET(p) & ~0x7)                                                     // Gets the size from specified address p 
-#define GET_ALLOC(p) (GET(p) & 0x1)                                                     // Gets the  allocated bit by reading the allocated field from address p
-
-#define HDRP(bp)   ((char *)(bp) - WSIZE)                                               // Retrieves address of header from given address bp
-#define FTRP(bp)   ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)                          // Retrieves address of footer from given address bp
+#define GET(p) (*(unsigned int *)(p))                                       //reads a word at address p
+#define PUT(p, val) (*(unsigned int *)(p) = (val))                          //puts in val at specified address p
 
 
-#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))                // Retrieves address of the block next to bp in memory
-#define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))                // Retrieves address of the block previous to bp in memory
+#define GET_SIZE(p) (GET(p) & ~0x7)                                         //gets size from specified address p
+#define GET_ALLOC(p) (GET(p) & 0x1)                                         //gets allocated bit by reading allocated field from address p
 
-static char *heap_listp;                                                                // Creates a pointer at the beginning of our heap
+#define HDRP(bp)   ((char *)(bp) - WSIZE)                                   //retrieves address of header from given address bp
+#define FTRP(bp)   ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)              //retrieves address of footer from given address bp
+
+
+#define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))    //retrieves address of block next to bp in memory
+#define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))    //retrieves address of block previous to bp in memory
+
+static char *heap_listp;   //creates pointer at beginning of our heap
 
 
 /* find_fit 
@@ -79,9 +80,9 @@ static void *find_fit(size_t asize)
 {
   void *bp;
 
-  for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {                    //traverses through heap
-   if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))){                          //if block is free and adjusted size is <= size of bp
-      return bp;                                     
+  for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp)) {       //traverses through heap
+    if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))){             //if block is free and adjusted size <= size of bp 
+      return bp;
     }
   }
  return NULL;
@@ -101,14 +102,15 @@ static void place(void *bp, size_t asize)
 {
   size_t csize = GET_SIZE(HDRP(bp));
 
-  if ((csize - asize) >= (2*DSIZE)) {                                                    //split block
-    PUT(HDRP(bp), PACK(asize, 1));  
+  if ((csize - asize) >= (2*DSIZE)) {          //split block
+    PUT(HDRP(bp), PACK(asize, 1));
     PUT(FTRP(bp), PACK(asize, 1));
     bp = NEXT_BLKP(bp);
     PUT(HDRP(bp), PACK(csize - asize, 0));
     PUT(FTRP(bp), PACK(csize-asize, 0));
   }
-  else{                                                                                  //don't split
+
+  else{                                        //don't split
     PUT(HDRP(bp), PACK(csize, 1));
     PUT(FTRP(bp), PACK(csize, 1));
   }
@@ -126,27 +128,30 @@ static void *coalesce(void *bp)
    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
    size_t size = GET_SIZE(HDRP(bp));
 
-   if (prev_alloc && next_alloc) {                                                       //case 1: neither adjacent block is free
+   if (prev_alloc && next_alloc) {                                          //case 1: neither adjacent block is free
      return bp;
    }
-   else if (prev_alloc && !next_alloc){                                                  //case 2: next block in memory is free, previous is allocated
-     size += GET_SIZE(HDRP(NEXT_BLKP(bp)));                                              //add size of next block to size of bp
+
+   else if (prev_alloc && !next_alloc){                                     //case 2: next block in memory is free, previous is allocated
+     size += GET_SIZE(HDRP(NEXT_BLKP(bp)));                                 //add size of next block to size of bp
      PUT(HDRP(bp), PACK(size, 0));
      PUT(FTRP(bp), PACK(size, 0));
    }
-   else if (!prev_alloc && next_alloc) {                                                 //case 3: previous block in memory is free, next is allocated
-     size += GET_SIZE(HDRP(PREV_BLKP(bp)));                                              //add size of previous block to size of bp
+
+   else if (!prev_alloc && next_alloc) {                                    //case 3: previous block in memory is free, next is allocated
+     size += GET_SIZE(HDRP(PREV_BLKP(bp)));                                 //add size of previous block to size of bp
      PUT(FTRP(bp), PACK(size, 0));
      PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
      bp = PREV_BLKP(bp);
    }
 
-   else {                                                                                //case 4: both previous block and next block are free
-     size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));              //add size of previous block and size of next block to size of bp
+   else {                                                                    //case 4: both previous block and next block are free
+     size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));  //add size of previous block and size of next block
      PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
      PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
      bp = PREV_BLKP(bp);
    }
+
    return bp;
 }
 
@@ -161,36 +166,33 @@ static void *extend_heap(size_t words)
   char *bp;
   size_t size;
 
-  size = (words % 2) ? (words+1) * WSIZE : words * WSIZE;                                 //ensures that size fits alignment requirements
+  size = (words % 2) ? (words+1) * WSIZE : words * WSIZE; //ensures that size fits alignment requirements
   if ((long)(bp = mem_sbrk(size)) == -1)
     return NULL;
 
-  PUT(HDRP(bp), PACK(size, 0));                                                           //initializes header of new free block
-  PUT(FTRP(bp), PACK(size, 0));                                                           //initializes footer of new free block
-  PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));                                                   //initializes epilogue header
+  PUT(HDRP(bp), PACK(size, 0));                //initializes header of new free block
+  PUT(FTRP(bp), PACK(size, 0));                //initializes footer of new free block
+  PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));        //initializes epilogue header
 
-  return coalesce(bp);  
+  return coalesce(bp);
 }
  
 /* 
  * mm_init - initialize the malloc package.
- * Creates a heap with an initial free block that includes a header, footer, and epilogue header.
  */
-
 int mm_init(void)
 {
-
   /*Create the initial empty heap */
   if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1)
       return -1;
-  PUT(heap_listp, 0);                                                                     //alignment padding
-  PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1));                                            //prologue header 
-  PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1));                                            //prologue footer
-  PUT(heap_listp + (3*WSIZE), PACK(0, 1));                                                //epilogue header
-  heap_listp = NEXT_BLKP(heap_listp);                                                     //decreases time needed to traverse through heap list
+  PUT(heap_listp, 0);                               //alignment padding
+  PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1));      //prologue header
+  PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1));      //prologue footer
+  PUT(heap_listp + (3*WSIZE), PACK(0, 1));          //epilogue header
+  heap_listp += (2*WSIZE);                       
 
-  /*extend the empty heap with a free block of CHUNKSIZE bytes */
-  if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
+      /*extend the empty heap with a free block of CHUNKSIZE bytes */
+      if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
 	return -1;      
  return 0;
 }
@@ -199,37 +201,39 @@ int mm_init(void)
 /* 
  * mm_malloc - Allocate a block by incrementing the brk pointer.
  *     Always allocate a block whose size is a multiple of the alignment.
-
+ *
  * mm_malloc takes in a size to allocate and checks if it meets the allignment requirement
  * It then uses find_fit to find the appropriate block then uses the place function to allocate the block with the given size
  * if it does not find a block then it extends the heap and allocates the new free block with the given size
  */
-
+ 
 void *mm_malloc(size_t size)
 {
-  size_t asize;                                                                           //initialize variables
+  size_t asize;                                               //initialize variables
   size_t extendsize;
   char *bp;
 
-  if (size == 0)                                                                         //ignore requests of size 0
+  if (size == 0)                                              //ignore requests of size 0
     return NULL;
 
-  if (size <= DSIZE)                                                                     //check if size is less than the minimum alignment requirement
-    asize = 2*DSIZE;                                                                     //adjust size to meet minimum alignment requirement
-  else                
-    asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);                              //adjust size to incorporate header and footer sizes and alignment requirements
+  if (size <= DSIZE)                                          //check if size is less than minimum alignment requirement
+    asize = 2*DSIZE;                                          //adjust size to meet minimum alignment requirement
+
+  else
+    asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);   //adjust size to incorporate header and footer sizes and alignment requirement
   
-  if ((bp = find_fit(asize)) != NULL) {                                                  //search heap for appropriately sized free block
-    place(bp, asize);                    
+  if ((bp = find_fit(asize)) != NULL) {                       //search heap for appropriately sized free block
+    place(bp, asize);
     return bp;
   }
 
-  extendsize = MAX(asize, CHUNKSIZE);                                                   //if no appropriately sized block is found, extend heap
-    
-  if ((bp = extend_heap(extendsize/WSIZE)) == NULL)                                     //place block within new free block in the extended heap
+  extendsize = MAX(asize, CHUNKSIZE);                         //if no appropriately sized block is found, extend heap
+
+  if ((bp = extend_heap(extendsize/WSIZE)) == NULL)           //place block within new free block in the extended heap
     return NULL;
   place(bp, asize);
   return bp;
+ 
  
 }
 
@@ -247,15 +251,18 @@ void mm_free(void *ptr)
 
   PUT(HDRP(ptr) , PACK(size, 0));
   PUT(FTRP(ptr), PACK(size, 0));
+
   coalesce(ptr);
 }
 
 
 
 /*
-functions identically to malloc and free unless the block size needs to be changed
-if so, it changes the size of the block and copies the existing data into the newly sized block
+ * mm_realloc
+ * functions identically to malloc and free unless the block size needs to be changed
+ * if so, it changes the size of the block and copies the existing data into the newly sized block
  */
+ 
 void *mm_realloc(void *ptr, size_t size)
 {
     void *oldptr = ptr;
@@ -264,11 +271,11 @@ void *mm_realloc(void *ptr, size_t size)
     
     newptr = mm_malloc(size);
 
-    if (newptr == NULL)                                                             //ignore if pointer points to NULL
+    if (newptr == NULL)                                                       //ignore if pointer points to NULL
       return NULL;
 
     copySize = GET_SIZE(HDRP(ptr));
-  
+
     if (size < copySize)
       copySize = size;
 
@@ -277,6 +284,7 @@ void *mm_realloc(void *ptr, size_t size)
 
     return newptr;
 }
+
 
 /* 
  * heap checker - traverses through the heap list to see if 
@@ -293,15 +301,13 @@ int  *mm_check(void){
     if (GET_SIZE(HDRP(bp)) != GET_SIZE(FTRP(bp))){                                  //case 1
       printf("Header and footer not same");
       return 0;
-}
+    }
 
     if (GET_ALLOC(HDRP(bp)) != GET_ALLOC(FTRP(bp))){                                //case 2
-       	return 0;}
+       	return 0;
+    }
   }
 }
-
-
-
 
 
 
